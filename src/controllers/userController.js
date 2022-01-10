@@ -6,16 +6,18 @@ const bcrypt = require('bcrypt')
 const saltRounds = 10
 
 
-
+//--------------------                             CREATE USER                             ---------------------------------------
 const createUser = async function (req, res) {
     try {
         let data = req.body;
         console.log(data,"data")
-      // let obj = JSON.parse(data)
-       // console.log(obj.)
-        const { fname, lname, email, phone, password } = data;
+    
+        const { fname, lname, email, password, phone, creditScore } = data;
 
         //validation starts
+        const bodyKeyName=Object.keys(data)               //body key name
+        console.log(bodyKeyName,"body key name")
+        
         if (!validator.isValidRequestBody(data)) {
             return res.status(400).send({ status: false, message: "please provide valid request body" })
         }
@@ -44,16 +46,43 @@ const createUser = async function (req, res) {
 
       
         //searching phone in DB to maintain its uniqueness
-        const isPhoneAleadyUsed = await userModel.findOne({ phone })
+        const phoneInBody = bodyKeyName.includes("phone")
+        if (phoneInBody){
+
+            if (!validator.isValid(phone)) {
+                return res.status(400).send({ status: false, message: "phone is required" })
+            }
+
+            //validating phone number of 10 digits only.
+            if (!(/^(?:(?:\+|0{0,2})91(\s*[\-]\s*)?|[0]?)?[6789]\d{9}$/.test(phone))) return res.status(400).send({ status: false, message: "Phone number must be a valid Indian number." })
+        
+            const isPhoneAleadyUsed = await userModel.findOne({ phone })
+       // console.log("phone in db",isPhoneAleadyUsed)
         if (isPhoneAleadyUsed) {
             return res.status(400).send({
                 status: false,
                 message: `${phone} is already in use, Please try a new phone number.`
             })
         }
+    }
 
-        //validating phone number of 10 digits only.
-        if (!(/^(?:(?:\+|0{0,2})91(\s*[\-]\s*)?|[0]?)?[6789]\d{9}$/.test(phone))) return res.status(400).send({ status: false, message: "Phone number must be a valid Indian number." })
+        const creditScoreInBody = bodyKeyName.includes("creditScore")
+        console.log("credit score in body", creditScoreInBody)
+        if (creditScoreInBody){
+            console.log("credit score2 ", creditScore)
+
+            if (creditScore < 0) {
+                return res.status(400).send({ status: false, message: "don't use negative values in CreditScore" });
+            }
+
+
+            if (!(isNaN(creditScore))) {
+                console.log("credit score2 ", creditScore)
+
+                return res.status(400).send({ status: false, message: "don't use  string value(alphabet or special character) " });
+            }
+          
+        }
 
         if (!validator.isValid(password)) {
             return res.status(400).send({ status: false, message: "password is required" })
@@ -66,8 +95,8 @@ const createUser = async function (req, res) {
             fname,
             lname,
             email,
-            phone,
-            password: encryptedPassword
+            password: encryptedPassword,
+            phone
         }
         const saveUserData = await userModel.create(userData);
         return res
@@ -87,7 +116,7 @@ const createUser = async function (req, res) {
         });
     }
 };
-//user login by validating the email and password.
+//---------------------                                 USER LOGIN                                -----------------------------
 const userLogin = async function (req, res) {
     try {
         const requestBody = req.body;
@@ -139,6 +168,7 @@ const userLogin = async function (req, res) {
         })
     }
 }
+//--------------------                         GET PROFILE                                   --------------------------------------
 const getProfile = async function (req, res) {
     try {
         const userId = req.params.userId
@@ -148,7 +178,7 @@ const getProfile = async function (req, res) {
             return res.status(400).send({ status: false, message: "Invalid userId in params." })
         }
         //validation ends
-        const findUserProfile = await userModel.findOne({ _id: userId })
+        const findUserProfile = await userModel.findOne({ _id: userId,isDeleted:false })
         if (!findUserProfile) {
             return res.status(400).send({
                 status: false,
@@ -167,7 +197,7 @@ const getProfile = async function (req, res) {
     }
 }
 
-
+//------------------------------                          UPDATE PROFILE                         --------------------------
 const updateProfile = async function (req, res) {
     try {
         let requestBody = req.body
@@ -183,10 +213,10 @@ const updateProfile = async function (req, res) {
         if (!validator.isValidRequestBody(requestBody)) {
             return res.status(400).send({
                 status: false,
-                message: "Invalid request parameters. Please provide user's details to update."
+                message: " Please provide user's details to update."
             })
         }
-        const findUserProfile = await userModel.findOne({ _id: userId })
+        const findUserProfile = await userModel.findOne({ _id: userId,isDeletd:false })
         if (!findUserProfile) {
             return res.status(400).send({
                 status: false,
@@ -208,7 +238,7 @@ const updateProfile = async function (req, res) {
         }
         if (fname) {
             if (!validator.isValid(fname)) {
-                return res.status(400).send({ status: false, message: "Invalid request parameter, please provide fname" })
+                return res.status(400).send({ status: false, message: "Please provide fname" })
             }
         }
         if (!validator.validString(lname)) {
@@ -216,7 +246,7 @@ const updateProfile = async function (req, res) {
         }
         if (lname) {
             if (!validator.isValid(lname)) {
-                return res.status(400).send({ status: false, message: "Invalid request parameter, please provide lname" })
+                return res.status(400).send({ status: false, message: "Please provide lname" })
             }
         }
 
@@ -226,14 +256,14 @@ const updateProfile = async function (req, res) {
         }
         if (email) {
             if (!validator.isValid(email)) {
-                return res.status(400).send({ status: false, message: "Invalid request parameter, please provide email" })
+                return res.status(400).send({ status: false, message: "Please provide email" })
             }
             if (!/^\w+([\.-]?\w+)@\w+([\.-]?\w+)(\.\w{2,3})+$/.test(email)) {
                 return res.status(400).send({ status: false, message: `Email should be a valid email address` });
             }
             let isEmailAlredyPresent = await userModel.findOne({ email: email })
             if (isEmailAlredyPresent) {
-                return res.status(400).send({ status: false, message: `Unable to update email. ${email} is already registered.` });
+                return res.status(400).send({ status: false, message: `  email ${email} is already registered.` });
             }
         }
 
@@ -243,14 +273,14 @@ const updateProfile = async function (req, res) {
         }
         if (phone) {
             if (!validator.isValid(phone)) {
-                return res.status(400).send({ status: false, message: "Invalid request parameter, please provide Phone number." })
+                return res.status(400).send({ status: false, message: "Please provide Phone number." })
             }
             if (!/^(?:(?:\+|0{0,2})91(\s*[\-]\s*)?|[0]?)?[6789]\d{9}$/.test(phone)) {
                 return res.status(400).send({ status: false, message: `Please enter a valid Indian phone number.` });
             }
             let isPhoneAlredyPresent = await userModel.findOne({ phone: phone })
             if (isPhoneAlredyPresent) {
-                return res.status(400).send({ status: false, message: `Unable to update phone. ${phone} is already registered.` });
+                return res.status(400).send({ status: false, message: `phone  ${phone} is already registered.` });
             }
         }
         //Validation ends

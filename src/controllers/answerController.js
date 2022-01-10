@@ -5,7 +5,7 @@ const validator = require("../validator/validator");
 
 
 
-
+//----------------------------------------                       CREATE ANSWER                           ------------------------
 const createAnswer = async function (req, res) {
     try {
         const requestBody = req.body
@@ -14,16 +14,26 @@ const createAnswer = async function (req, res) {
         if (!validator.isValidRequestBody(requestBody)) {
             return res.status(400).send({ status: false, message: "please provide valid request body" })
         }
+        if (!validator.isValidObjectId(questionId)) {
+            res.status(400).send({ status: false, message: `${questionId} is not a valid question id` })
+            return
+        }
+
         if (!validator.isValid(questionId)) {
             return res.status(400).send({ status: false, message: "questionId is required" })
         }
-        if (!validator.isValid(userId)) {
-            return res.status(400).send({ status: false, message: "userId is required" })
-        } if (!validator.isValid(text)) {
-            return res.status(400).send({ status: false, message: "text is required" })
+        if (!validator.isValidObjectId(userId)) {
+            res.status(400).send({ status: false, message: `${userId} is not a valid user id` })
+            return
         }
-        const findQuestion = await questionModel.findOne({ _id: questionId })
-       
+
+        if (!validator.isValid(userId)) {
+            return res.status(400).send({ status: false, message: "answerId is required" })
+        } if (!validator.isValid(text)) {
+            return res.status(400).send({ status: false, message: "text detail is required" })
+        }
+        const findQuestion = await questionModel.findOne({ _id: questionId ,isDeleted:false})
+       // console.log("QUESTION DETAILS:::::", findQuestion)
         if (!findQuestion) {
             return res.status(400).send({
                 status: false,
@@ -37,43 +47,57 @@ const createAnswer = async function (req, res) {
                 message: `user doesn't exists by ${userId}`
             })
         }
-
         // Authentication & authorization
-        // if (findUserProfile._id.toString() != userIdFromToken) {
-        //     res.status(401).send({ status: false, message: `Unauthorized access! User's info doesn't match` });
-        //     return
-        // }
-        const answer = 
-            {
+        if (findUser._id.toString() != userIdFromToken) {
+            res.status(401).send({ status: false, message: `Unauthorized access! User's info doesn't match` });
+            return
+        } 
+        const userIdFromUserCollection = findUser._id.toString()
+        console.log("user id from user collection", userIdFromUserCollection)
+        const askedByFromQuestionCollection = findQuestion.askedBy.toString()
+        console.log("askedby from question collection", askedByFromQuestionCollection)
+        if (userIdFromUserCollection == askedByFromQuestionCollection) {
+            console.log("hy hy same same ")
+            return res.status(400).send({
+                status: false,
+                message: `can't write answer becouse  ${userId} is author of question`
+            })
+        }
+        const userScoreIncrease = findUser.creditScore + 200
+        console.log("userScoreIncrease::", userScoreIncrease)
+        const userDetails2 = await userModel.updateOne({ _id:userId }, { creditScore: userScoreIncrease })
+
+        const answer =
+        {
             answeredBy: findUser._id,
-                questionId : questionId,
-                    text: text
-
+            questionId: questionId,
+            text: text
         };
-        console.log(answer,"answer")
-    
-         const saveAnswerData = await answerModel.create(answer);
-         console.log("answer by main maian",saveAnswerData)
-    return res
-        .status(201)
-        .send({
-            status: true,
-            message: "answer created successfully.",
-            data: saveAnswerData
+        //console.log(answer, "answer")
+
+        const saveAnswerData = await answerModel.create(answer);
+       
+       // console.log("answer by main maian", saveAnswerData)
+        return res
+            .status(201)
+            .send({
+                status: true,
+                message: "answer created successfully.",
+                data: saveAnswerData
+            });
+
+
+
+    } catch (error) {
+        return res.status(500).send({
+            status: false,
+            message: "Something went wrong",
+            error: error.message,
         });
-
-
-
-} catch (error) {
-    return res.status(500).send({
-        status: false,
-        message: "Something went wrong",
-        error: error.message,
-    });
-}
+    }
 };
 
-
+//---------------------------                              GET ANSWER BY ID                       --------------------------//
 
 const getAnswerById = async function (req, res) {
     try {
@@ -83,15 +107,21 @@ const getAnswerById = async function (req, res) {
             return res.status(400).send({ status: false, message: "Invalid questionId in params." })
         }
         //validation ends
-        const findQuestion = await questionModel.findOne({ _id: questionId })
+        const findQuestion = await questionModel.findOne({ _id: questionId ,isDeleted:false})
         if (!findQuestion) {
             return res.status(400).send({
                 status: false,
-                message: `User doesn't exists by ${questionId}`
+                message: `question doesn't exists by ${questionId}`
             })
         }
-        const findAnswerByQuestionId = await answerModel.find({ questionId: questionId}).select({text:1,answeredBy:1})
-        console.log("answer", findAnswerByQuestionId)
+        const findAnswerByQuestionId = await answerModel.find({ questionId: questionId,isDeleted:false }).select({ text: 1, answeredBy: 1 }).sort({createdAt:-1})
+        if (!findAnswerByQuestionId) {
+            return res.status(400).send({
+                status: false,
+                message: `answer doesn't exists by ${questionId}`
+            })
+        }
+        // console.log("answer", findAnswerByQuestionId)
         let Data = {
             questionDetails: findQuestion,
             answer: findAnswerByQuestionId
@@ -103,15 +133,15 @@ const getAnswerById = async function (req, res) {
         });
 
 
-} catch (error) {
-    return res.status(500).send({
-        status: false,
-        message: "Something went wrong",
-        error: error.message,
-    });
-}
+    } catch (error) {
+        return res.status(500).send({
+            status: false,
+            message: "Something went wrong",
+            error: error.message,
+        });
+    }
 };
-
+//--------------------------------------              UPDATE ANSWER                             -----------------------------//
 const updateAnswer = async function (req, res) {
     try {
         let requestBody = req.body
@@ -138,50 +168,86 @@ const updateAnswer = async function (req, res) {
                 message: `answer doesn't exists by ${answerId}`
             })
         }
+       // console.log("answeredBy:", findAnswer.answeredBy, "token userid:", userIdFromToken)
         //Authentication & authorization
-        // if (findAnswer.answeredBy.toString() != userIdFromToken) {
-        //     res.status(401).send({ status: false, message: `Unauthorized access! User's info doesn't match` });
-        //     return
-        // }
-let { text } = requestBody;
+        if (findAnswer.answeredBy.toString() != userIdFromToken) {
+            res.status(401).send({ status: false, message: `Unauthorized access! User's info doesn't match` });
+            return
+        }
+        let { text } = requestBody;
+        if (!validator.validString(text)) {
+            return res.status(400).send({ status: false, message: "text is missing." })
+        }
+
         let changeAnswerDetails = await answerModel.findOneAndUpdate({ _id: answerId }, {
-text:text
+            text: text
         }, { new: true })
-        return res.status(200).send({ status: true, data: changeAnswerDetails })
+        return res.status(201).send({ status: true, data: changeAnswerDetails })
 
 
-} catch (error) {
-    return res.status(500).send({
-        status: false,
-        message: "Something went wrong",
-        error: error.message,
-    });
-}
+    } catch (error) {
+        return res.status(500).send({
+            status: false,
+            message: "Something went wrong",
+            error: error.message,
+        });
+    }
 };
 
 
-
+//--------------------------------              DELETE ANSWER                     -------------------------------------//
 
 const deleteAnswer = async function (req, res) {
     try {
+        const answerId = req.params.answerId;
         let requestBody = req.body
-        const userId= requestBody.userId
-        const questionId = requestBody.questionId
-        if (!validator.isValidRequestBody(requestBody)) {
-            return res.status(400).send({ status: false, message: "please provide valid request body" })
+        let userIdFromToken = req.userId
+
+        //validating answerId
+        if (!validator.isValidObjectId(answerId)) {
+            return res.status(400).send({ status: false, message: "Invalid answerId in params." })
+        }
+        const findAnswer = await answerModel.findOne({ _id: answerId,isDeleted:false })
+        if (!findAnswer) {
+            return res.status(400).send({
+                status: false,
+                message: `answer doesn't exists by ${answerId} `
+            })
+        }
+
+        let { userId, questionId } = requestBody
+        if (!validator.isValid(userId)) {
+            return res.status(400).send({ status: false, message: "userId is not given" })
+        }
+        if (!(validator.isValidObjectId(userId))) {
+            return res.status(400).send({ status: false, message: `${userId} is not a valid id` });
         }
         if (!validator.isValid(questionId)) {
-            return res.status(400).send({ status: false, message: "questionId is required" })
+            return res.status(400).send({ status: false, message: `questionid is not given` })
         }
-        if (!validator.isValid(userId)) {
-            return res.status(400).send({ status: false, message: "userId is required" })
+        if (!(validator.isValidObjectId(questionId))) {
+            return res.status(400).send({ status: false, message: `${questionId} is not a valid id` });
         }
-} catch (error) {
-    return res.status(500).send({
-        status: false,
-        message: "Something went wrong",
-        error: error.message,
-    });
-}
+
+        //Authentication & authorization
+        if (userId.toString() != userIdFromToken) {
+            res.status(401).send({ status: false, message: `Unauthorized access! User's info doesn't match` });
+            return
+        }
+        const deleteAnswer = await answerModel.findOneAndUpdate({ _id: answerId, answeredBy: userId }, { isDeleted: true, deletedAt: new Date()  })
+        return res.status(200).send({
+            status: true,
+            message: "answer deleted successfully",
+        
+        })
+
+
+    } catch (error) {
+        return res.status(500).send({
+            status: false,
+            message: "Something went wrong",
+            error: error.message,
+        });
+    }
 };
 module.exports = { createAnswer, getAnswerById, updateAnswer, deleteAnswer };
